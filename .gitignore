@@ -1,0 +1,15 @@
+# PlatformIO
+.pio/
+*.bin
+*.elf
+*.hex
+.venv-pio/*
+compile_commands.json
+.docs/*
+
+# VS Code — keep only shared extension recommendations
+.vscode/*
+!.vscode/extensions.json
+
+# OS
+.DS_Store
