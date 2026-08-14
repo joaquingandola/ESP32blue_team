@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ESP32blue_team is an ESP32 firmware project building a **defensive/forensic security tooling profile** for the ESP32 — i.e., tools aimed at monitoring and protecting a network, not offensive/attack tooling.
 
-`lib/wifi_scan` (active Wi-Fi scan) and `lib/ble_scan` (passive BLE scan) are implemented and wired into `src/main.cpp`. `lib/wifi_sniff`, `lib/logger`, `lib/ui`, and `test/test_records` are still empty skeletons.
+`lib/wifi_scan` (active Wi-Fi scan), `lib/ble_scan` (passive BLE scan), and `lib/ui` (serial menu) are implemented and wired into `src/main.cpp`. `lib/wifi_sniff`, `lib/logger`, and `test/test_records` are still empty skeletons.
 
 ## v1.0 Prototype Scope
 
