@@ -19,21 +19,22 @@ std::vector<BleRecord> bleScan(uint32_t seconds) {
     ensureBleInit();
 
     NimBLEScan* pScan = NimBLEDevice::getScan();
-    pScan->setActiveScan(false);  // passive: listen only, never send SCAN_REQ
+    pScan->setActiveScan(false);  // passive
     pScan->setInterval(100);
-    pScan->setWindow(100);        // window == interval: scan continuously
+    pScan->setWindow(100);        // window
 
-    NimBLEScanResults found = pScan->start(seconds, false);  // blocking
+    NimBLEScanResults found = pScan->getResults(seconds * 1000, false);
 
     std::vector<BleRecord> results;
     results.reserve(found.getCount());
     for (int i = 0; i < found.getCount(); ++i) {
-        NimBLEAdvertisedDevice d = found.getDevice(i);
+        const NimBLEAdvertisedDevice* d = found.getDevice(i);
         BleRecord r;
-        r.address = d.getAddress().toString().c_str();
-        r.name    = d.haveName() ? d.getName().c_str() : "";
-        r.rssi    = d.getRSSI();
-        r.adv     = bytesToHex(d.getPayload(), d.getPayloadLength());
+        r.address = d->getAddress().toString().c_str();
+        r.name    = d->haveName() ? d->getName().c_str() : "";
+        r.rssi    = d->getRSSI();
+        const std::vector<uint8_t>& payload = d->getPayload();
+        r.adv     = bytesToHex(payload.data(), payload.size());
         results.push_back(std::move(r));
     }
 
