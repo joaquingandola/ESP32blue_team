@@ -13,6 +13,11 @@ void wifi_sniffer_cb(void* buf, wifi_promiscuous_pkt_type_t type){
 
 }
 
+void HelloWorld() {
+    Serial.println("Hello, world!");
+}
+
+
 // Prints raw scan results over Serial. Temporary until the logger/menu exist.
 void doWifiScan() {
     Serial.println("--- Wi-Fi active scan ---");
