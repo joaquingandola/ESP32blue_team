@@ -8,10 +8,6 @@ void wifi_sniffer_cb(void* buf, wifi_promiscuous_pkt_type_t type){
 
 }
 
-void HelloWorld() {
-    Serial.println("Hello, world!");
-}
-
 void sniffWifi() {
     // TODO: out of scope for this change (Wi-Fi passive sniff feature)
 }
@@ -19,7 +15,6 @@ void sniffWifi() {
 void setup() {
     Serial.begin(115200);
     //init display , buttons, 50
-    HelloWorld();
     bt::menuInit();
 }
 

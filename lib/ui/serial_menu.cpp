@@ -1,6 +1,8 @@
 #include "serial_menu.h"
 
 #include <Arduino.h>
+#include <WiFi.h>
+#include <esp_sleep.h>
 
 #include "records.h"
 #include "wifi_scan.h"
@@ -10,7 +12,16 @@ namespace bt {
 
 namespace {
 
-enum Screen { SCREEN_MAIN, SCREEN_WIFI_SCAN, SCREEN_BLE_SCAN, SCREEN_SETTINGS };
+
+typedef void (*ActionFn)();
+typedef void (*PrintFn)();
+
+struct ScreenStrategy {
+    ActionFn onRun;
+    PrintFn  onPrint;
+};
+
+enum Screen { SCREEN_MAIN, SCREEN_WIFI_SCAN, SCREEN_BLE_SCAN, SCREEN_SETTINGS, SCREEN_shutdownAndSleep };
 
 constexpr uint32_t kBleScanSeconds = 5;
 
@@ -22,6 +33,7 @@ void printMainMenu() {
     Serial.println("1) Wi-Fi active scan");
     Serial.println("2) BLE passive scan");
     Serial.println("3) Settings / info");
+    Serial.println("4) Shutdown and Sleep");
     Serial.println("Select an option:");
 }
 
@@ -67,6 +79,17 @@ void runBleScan() {
     printBleScanMenu();
 }
 
+void shutdownAndSleep() {
+    Serial.println("shutdownAndSleeping ... (power-cycle or press EN/RESET to use the menu again)");
+    Serial.flush();
+
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    bleShutdown();
+
+    esp_deep_sleep_start();
+}
+
 void handleMainInput(char c) {
     switch (c) {
         case '1':
@@ -81,58 +104,45 @@ void handleMainInput(char c) {
             screen = SCREEN_SETTINGS;
             printSettings();
             break;
+        case '4':
+            screen = SCREEN_shutdownAndSleep;
+            shutdownAndSleep();
+            break;
         default:
             printMainMenu();
             break;
     }
 }
 
-void handleWifiScanInput(char c) {
-    switch (c) {
+void handleScreenInput(
+    char c,
+    const ScreenStrategy& strategy) {
+        switch (c) {
         case 'r':
         case 'R':
-            runWifiScan();
+            if(strategy.onRun)
+                {strategy.onRun();}
+            else
+                {strategy.onPrint();}
             break;
-        case 'b':
+        case 'b': 
         case 'B':
             screen = SCREEN_MAIN;
             printMainMenu();
             break;
-        default:
-            printWifiScanMenu();
+        default: 
+            strategy.onPrint();
             break;
+        }
     }
-}
 
-void handleBleScanInput(char c) {
-    switch (c) {
-        case 'r':
-        case 'R':
-            runBleScan();
-            break;
-        case 'b':
-        case 'B':
-            screen = SCREEN_MAIN;
-            printMainMenu();
-            break;
-        default:
-            printBleScanMenu();
-            break;
-    }
-}
+static const ScreenStrategy wifiScanStrategy = { runWifiScan, printWifiScanMenu };
+static const ScreenStrategy bleScanStrategy  = { runBleScan,  printBleScanMenu };
+static const ScreenStrategy settingsStrategy = { nullptr,     printSettings };
 
-void handleSettingsInput(char c) {
-    switch (c) {
-        case 'b':
-        case 'B':
-            screen = SCREEN_MAIN;
-            printMainMenu();
-            break;
-        default:
-            printSettings();
-            break;
-    }
-}
+void handleWifiScanInput(char c) { handleScreenInput(c, wifiScanStrategy); }
+void handleBleScanInput(char c) { handleScreenInput(c, bleScanStrategy); }
+void handleSettingsInput(char c) { handleScreenInput(c, settingsStrategy); }
 
 }  // namespace
 

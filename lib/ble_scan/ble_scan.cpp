@@ -5,15 +5,16 @@ namespace bt {
 
 namespace {
 
+bool g_bleInitialized = false;
+
 void ensureBleInit() {
-    static bool initialized = false;
-    if (!initialized) {
+    if (!g_bleInitialized) {
         NimBLEDevice::init("");
-        initialized = true;
+        g_bleInitialized = true;
     }
 }
 
-}  // namespace
+}
 
 std::vector<BleRecord> bleScan(uint32_t seconds) {
     ensureBleInit();
@@ -40,6 +41,17 @@ std::vector<BleRecord> bleScan(uint32_t seconds) {
 
     pScan->clearResults();
     return results;
+}
+
+void bleShutdown() {
+    if (g_bleInitialized) {
+        NimBLEScan* pScan = NimBLEDevice::getScan();
+        if(pScan && pScan->isScanning()) {
+            pScan->stop();
+        }
+        NimBLEDevice::deinit(true);
+        g_bleInitialized = false;
+    }
 }
 
 }  // namespace bt

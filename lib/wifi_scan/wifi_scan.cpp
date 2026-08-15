@@ -1,26 +1,9 @@
 #include "wifi_scan.h"
 #include <WiFi.h>
 
+#include "wifi_auth.h"
+
 namespace bt {
-
-namespace {
-
-std::string encryptionTypeToString(wifi_auth_mode_t enc) {
-    switch (enc) {
-        case WIFI_AUTH_OPEN:            return "OPEN";
-        case WIFI_AUTH_WEP:             return "WEP";
-        case WIFI_AUTH_WPA_PSK:         return "WPA_PSK";
-        case WIFI_AUTH_WPA2_PSK:        return "WPA2_PSK";
-        case WIFI_AUTH_WPA_WPA2_PSK:    return "WPA_WPA2_PSK";
-        case WIFI_AUTH_WPA2_ENTERPRISE: return "WPA2_ENTERPRISE";
-        case WIFI_AUTH_WPA3_PSK:        return "WPA3_PSK";
-        case WIFI_AUTH_WPA2_WPA3_PSK:   return "WPA2_WPA3_PSK";
-        case WIFI_AUTH_WAPI_PSK:        return "WAPI_PSK";
-        default:                        return "UNKNOWN";
-    }
-}
-
-}  // namespace
 
 std::vector<ApRecord> wifiActiveScan() {
     std::vector<ApRecord> results;
@@ -39,7 +22,7 @@ std::vector<ApRecord> wifiActiveScan() {
         r.bssid      = WiFi.BSSIDstr(i).c_str();
         r.channel    = static_cast<uint8_t>(WiFi.channel(i));
         r.rssi       = WiFi.RSSI(i);
-        r.encryption = encryptionTypeToString(WiFi.encryptionType(i));
+        r.encryption = wifiAuthModeToString(static_cast<int>(WiFi.encryptionType(i)));
         results.push_back(std::move(r));
     }
 
