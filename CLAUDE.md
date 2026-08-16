@@ -35,3 +35,6 @@ Hard constraint: no deauthing, packet injection, or other offensive/disruptive a
 - Shared, hardware-agnostic code lives in `include/`: `records.h` (data types + CSV/JSON formatting) and `config.h` (pins, baud, log defaults, feature flags).
 - **Portability rule:** `include/records.h` must stay Arduino-free (std types only) so it compiles and unit-tests on the `native` env. Put Arduino/ESP-IDF code in `lib/` or `src/`, never in `include/records.h`.
 - Intended boundaries (see `docs/architecture.md`): `lib/ui/serial_menu.*` is the only place that does Serial I/O; scan modules return records; `lib/logger` is the only writer to sinks (Serial/SD).
+
+## Claude instructions
+- Whenever there is a new relevant characteristic about the project either not stated in this file or contradictory to what is said here, please update this Claude.md. 

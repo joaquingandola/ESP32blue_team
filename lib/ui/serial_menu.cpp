@@ -37,12 +37,26 @@ void printMainMenu() {
     Serial.println("Select an option:");
 }
 
-void printWifiScanMenu() {
+void printRunAgainMenu() {
     Serial.println("[r] Run again  [b] Back to menu");
 }
 
-void printBleScanMenu() {
-    Serial.println("[r] Run again  [b] Back to menu");
+void printApTable(const std::vector<ApRecord>& results) {
+    Serial.printf("%-20s %-17s %-3s %-6s %s\n", "SSID", "BSSID", "CH", "RSSI", "ENCRYPTION");
+    for (const auto& ap : results) {
+        Serial.printf("%-20.20s %-17s %-3u %-6d %s\n",
+                       ap.ssid.c_str(), ap.bssid.c_str(), ap.channel, ap.rssi,
+                       ap.encryption.c_str());
+    }
+}
+
+void printBleTable(const std::vector<BleRecord>& results) {
+    Serial.printf("%-17s %-20s %-6s %s\n", "ADDRESS", "NAME", "RSSI", "ADV");
+    for (const auto& dev : results) {
+        const std::string name = dev.name.empty() ? "(unknown)" : dev.name;
+        Serial.printf("%-17s %-20.20s %-6d %s\n",
+                       dev.address.c_str(), name.c_str(), dev.rssi, dev.adv.c_str());
+    }
 }
 
 void printSettings() {
@@ -60,11 +74,10 @@ void runWifiScan() {
     auto results = wifiActiveScan();
     if (results.empty()) {
         Serial.println("No access points found");
+    } else {
+        printApTable(results);
     }
-    for (const auto& ap : results) {
-        Serial.println(toCsv(ap).c_str());
-    }
-    printWifiScanMenu();
+    printRunAgainMenu();
 }
 
 void runBleScan() {
@@ -72,11 +85,10 @@ void runBleScan() {
     auto results = bleScan(kBleScanSeconds);
     if (results.empty()) {
         Serial.println("No devices found");
+    } else {
+        printBleTable(results);
     }
-    for (const auto& dev : results) {
-        Serial.println(toCsv(dev).c_str());
-    }
-    printBleScanMenu();
+    printRunAgainMenu();
 }
 
 void shutdownAndSleep() {
@@ -136,8 +148,8 @@ void handleScreenInput(
         }
     }
 
-static const ScreenStrategy wifiScanStrategy = { runWifiScan, printWifiScanMenu };
-static const ScreenStrategy bleScanStrategy  = { runBleScan,  printBleScanMenu };
+static const ScreenStrategy wifiScanStrategy = { runWifiScan, printRunAgainMenu };
+static const ScreenStrategy bleScanStrategy  = { runBleScan,  printRunAgainMenu };
 static const ScreenStrategy settingsStrategy = { nullptr,     printSettings };
 
 void handleWifiScanInput(char c) { handleScreenInput(c, wifiScanStrategy); }
