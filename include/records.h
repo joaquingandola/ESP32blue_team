@@ -26,6 +26,17 @@ struct BleRecord {
     std::string adv;         // advertisement payload, hex-encoded
 };
 
+// An 802.11 management frame observed passively (beacon or probe request) by
+// the promiscuous sniffer (lib/wifi_sniff).
+struct SniffRecord {
+    std::string type;        // "BEACON" | "PROBE_REQ"
+    std::string src;         // transmitter MAC (addr2)
+    std::string bssid;       // BSSID (addr3)
+    std::string ssid;        // network name; empty for a wildcard probe request
+    uint8_t     channel = 0;
+    int32_t     rssi = 0;    // dBm
+};
+
 // ---- Formatting helpers (portable; used by the logger) ----
 
 namespace detail {
@@ -51,6 +62,20 @@ inline std::string bytesToHex(const uint8_t* data, size_t len) {
     for (size_t i = 0; i < len; ++i) {
         out += kHex[(data[i] >> 4) & 0x0F];
         out += kHex[data[i] & 0x0F];
+    }
+    return out;
+}
+
+// Formats 6 raw MAC bytes as "AA:BB:CC:DD:EE:FF". Portable so the sniff frame
+// parser (and its host tests) can share it.
+inline std::string macToString(const uint8_t mac[6]) {
+    static const char* kHex = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(17);
+    for (int i = 0; i < 6; ++i) {
+        if (i) out += ':';
+        out += kHex[(mac[i] >> 4) & 0x0F];
+        out += kHex[mac[i] & 0x0F];
     }
     return out;
 }
@@ -86,6 +111,25 @@ inline std::string toJson(const BleRecord& r) {
            "\",\"name\":\"" + detail::jsonEscape(r.name) +
            "\",\"rssi\":" + std::to_string(r.rssi) +
            ",\"adv\":\"" + detail::jsonEscape(r.adv) + "\"}";
+}
+
+inline std::string csvHeaderSniff() {
+    return "type,src,bssid,ssid,channel,rssi";
+}
+
+inline std::string toCsv(const SniffRecord& r) {
+    // NOTE: no CSV quoting yet — SSIDs containing commas/quotes will need it.
+    return r.type + "," + r.src + "," + r.bssid + "," + r.ssid + "," +
+           std::to_string(r.channel) + "," + std::to_string(r.rssi);
+}
+
+inline std::string toJson(const SniffRecord& r) {
+    return "{\"type\":\"" + detail::jsonEscape(r.type) +
+           "\",\"src\":\"" + detail::jsonEscape(r.src) +
+           "\",\"bssid\":\"" + detail::jsonEscape(r.bssid) +
+           "\",\"ssid\":\"" + detail::jsonEscape(r.ssid) +
+           "\",\"channel\":" + std::to_string(r.channel) +
+           ",\"rssi\":" + std::to_string(r.rssi) + "}";
 }
 
 }  // namespace bt
