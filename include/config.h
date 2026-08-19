@@ -14,7 +14,7 @@ constexpr uint32_t kSerialBaud = 115200;
 // Channel hopping: dwell on each channel this long before advancing. ~250 ms
 // keeps us from going deaf on channel 1 while still catching bursty probe reqs.
 constexpr uint32_t kSniffDwellMs      = 250;
-constexpr uint8_t  kSniffChannelMin   = 1;   // ETSI/AR: 1..13 (US/FCC would be 1..11)
+constexpr uint8_t  kSniffChannelMin   = 1;
 constexpr uint8_t  kSniffChannelMax   = 13;
 
 // Producer -> consumer raw-frame queue (driver callback -> parsing task).

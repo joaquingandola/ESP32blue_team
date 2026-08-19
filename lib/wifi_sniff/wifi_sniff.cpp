@@ -33,9 +33,7 @@ volatile uint32_t sParsed      = 0;
 volatile uint32_t sDroppedOut  = 0;
 
 // ---- Producer: promiscuous RX callback -------------------------------------
-// Runs in the Wi-Fi task context. Keep it minimal and non-blocking: copy the
-// bounded bytes + metadata, push, return. Drops on a full queue rather than
-// stalling the Wi-Fi task.
+// Drops on a full queue rather than stalling the Wi-Fi task.
 void rxCb(void* buf, wifi_promiscuous_pkt_type_t type) {
     if (type != WIFI_PKT_MGMT || buf == nullptr) return;
 
@@ -57,7 +55,7 @@ void rxCb(void* buf, wifi_promiscuous_pkt_type_t type) {
 
 // ---- Consumer: our own task, our own context -------------------------------
 void consumerTaskFn(void*) {
-    SniffFrame f;
+    SniffFrame f; 
     for (;;) {
         if (xQueueReceive(rawQueue, &f, portMAX_DELAY) != pdTRUE) continue;
 
@@ -74,7 +72,7 @@ void consumerTaskFn(void*) {
     }
 }
 
-// ---- Channel hopping -------------------------------------------------------
+// ---- Channel hopping -----------------------------------------------
 void hopTimerCb(void*) {
     currentChannel = (currentChannel >= kSniffChannelMax) ? kSniffChannelMin
                                                           : currentChannel + 1;

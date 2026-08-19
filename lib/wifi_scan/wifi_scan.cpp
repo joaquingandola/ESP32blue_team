@@ -9,6 +9,7 @@ std::vector<ApRecord> wifiActiveScan() {
     std::vector<ApRecord> results;
 
     WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
     int n = WiFi.scanNetworks();  // blocking active scan
     if (n <= 0) {
         WiFi.scanDelete();
