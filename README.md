@@ -4,7 +4,11 @@ An ESP32 firmware project focused on **defensive and forensic security tooling**
 
 ## Status
 
-Early prototype / planning stage. No firmware code has been written yet.
+**Active development.** Core features implemented:
+- ✅ WiFi promiscuous sniffing (802.11 frame capture)
+- ✅ BLE device scanning
+- ⚠️ Parsing & record output (CSV/JSON) — in progress
+- 🔧 Menu UI & SD logging — planned
 
 ## v1.0 Prototype Scope
 

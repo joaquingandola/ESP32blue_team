@@ -14,5 +14,4 @@ compile_commands.json
 # OS
 .DS_Store
 
-.claude/*
-!skills
+.claude/agent-memory-local/embedded-reviewer
