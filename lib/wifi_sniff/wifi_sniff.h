@@ -23,6 +23,8 @@ namespace bt {
     uint32_t droppedRaw  = 0;  // dropped: raw queue full (consumer too slow)
     uint32_t parsed      = 0;  // frames parsed into a SniffRecord
     uint32_t droppedOut  = 0;  // dropped: out queue full (caller not draining)
+    uint32_t stopTimeouts = 0; // sniffStop() gave up waiting for the consumer
+                                // task to confirm a clean exit (see sniffStop)
 };
 
 // Brings up the Wi-Fi driver in promiscuous mode, creates the queues + consumer
@@ -31,8 +33,13 @@ namespace bt {
 // running.
 bool sniffStart();
 
-// Tears everything down: stops hopping, disables promiscuous RX, deletes the
-// consumer task, and frees both queues. Safe to call if not started.
+// Tears everything down: stops hopping, disables promiscuous RX, signals the
+// consumer task to stop and waits (with a bounded timeout) for it to exit on
+// its own, then frees both queues. On the normal path the consumer is never
+// killed externally -- see the design note on consumerTaskFn in
+// wifi_sniff.cpp. If the wait times out (stats.stopTimeouts), it is forcibly
+// deleted as a last resort before the queues are freed, to avoid freeing
+// queues a still-running task could touch. Safe to call if not started.
 void sniffStop();
 
 // Pops one parsed record into `out`. Returns false if none are pending. Never

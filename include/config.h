@@ -26,4 +26,14 @@ constexpr uint16_t kSniffFrameMaxLen   = 128;
 // Consumer -> caller parsed-record drain queue (drained via sniffPoll()).
 constexpr uint32_t kSniffOutQueueDepth = 64;
 
+// Consumer task shutdown: sniffStop() signals a cooperative stop rather than
+// killing the task with vTaskDelete() from outside -- doing that mid `new`/
+// std::string could leave the newlib heap allocator mutex held forever.
+// kSniffConsumerPollMs bounds the queue-receive timeout the consumer uses so
+// it notices the stop flag promptly; kSniffConsumerStopTimeoutMs bounds how
+// long sniffStop() waits for the consumer to confirm it exited before giving
+// up (rather than blocking forever).
+constexpr uint32_t kSniffConsumerPollMs        = 50;
+constexpr uint32_t kSniffConsumerStopTimeoutMs = 500;
+
 }  // namespace bt

@@ -40,3 +40,14 @@ Hard constraint: no deauthing, packet injection, or other offensive/disruptive a
 
 ## Claude instructions
 - Whenever there is a new relevant characteristic about the project either not stated in this file or contradictory to what is said here, please update this Claude.md. 
+
+## Pipeline de cambios de firmware
+Cuando se implemente o modifique funcionalidad en lib/ o src/:
+1. embedded-writer implementa.
+2. embedded-tester cubre la lógica pura nueva con Unity (si aplica).
+3. embedded-reviewer revisa el diff completo (código + tests).
+No des una tarea de código por terminada sin pasar por este orden.
+
+
+## Desmantelamiento de tareas explicitas
+En caso de que se pida implementar una tarea, como por ejemplo realizar la Fase 2, se espera que dividas esa tarea en pequenas subtareas y procedas una por una; pidiendo autorizacion al usuario por la CLI para continuar con el proceso. En el ejemplo de la fase 2, deberias saber que hay que realizar un parte de consumidor, otra de productor, drenaje de coalas y salto de canales. Se espera que primero hagas una de ella y que luego pidas seguir al usuario. Esto para mejorar debugging y revision de codigo.
