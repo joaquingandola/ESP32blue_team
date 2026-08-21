@@ -14,6 +14,8 @@
 // a single channel.
 
 #include <cstdint>
+#include <cstdio>
+#include <string>
 #include "records.h"
 
 namespace bt {
@@ -25,21 +27,29 @@ namespace bt {
     uint32_t droppedOut  = 0;  // dropped: out queue full (caller not draining)
     uint32_t stopTimeouts = 0; // sniffStop() gave up waiting for the consumer
                                 // task to confirm a clean exit (see sniffStop)
+    bool     poisoned    = false;  // true once a stop timeout has occurred:
+                                    // the consumer task and both queues were
+                                    // deliberately leaked rather than torn
+                                    // down unsafely, and sniffStart() will
+                                    // keep refusing to run until reboot.
 };
 
 // Brings up the Wi-Fi driver in promiscuous mode, creates the queues + consumer
 // task, installs the RX callback, and starts channel hopping. Returns false
 // (leaving everything torn down) on any setup failure. Returns true if already
-// running.
+// running. Also returns false without doing anything if a previous sniffStop()
+// timed out and poisoned the module (stats.poisoned) -- see sniffStop().
 bool sniffStart();
 
 // Tears everything down: stops hopping, disables promiscuous RX, signals the
 // consumer task to stop and waits (with a bounded timeout) for it to exit on
-// its own, then frees both queues. On the normal path the consumer is never
-// killed externally -- see the design note on consumerTaskFn in
-// wifi_sniff.cpp. If the wait times out (stats.stopTimeouts), it is forcibly
-// deleted as a last resort before the queues are freed, to avoid freeing
-// queues a still-running task could touch. Safe to call if not started.
+// its own, then deletes the task and frees both queues. On the normal path
+// the consumer is never killed externally -- see the design note on
+// consumerTaskFn in wifi_sniff.cpp. If the wait times out (stats.stopTimeouts),
+// there is no point at which it's provably safe to delete the task or free
+// the queues, so instead the module deliberately leaks the task and both
+// queues and marks itself poisoned (stats.poisoned): sniffStart() will refuse
+// to run again until the firmware reboots. Safe to call if not started.
 void sniffStop();
 
 // Pops one parsed record into `out`. Returns false if none are pending. Never
@@ -48,5 +58,17 @@ bool sniffPoll(SniffRecord& out);
 
 // Snapshot of the capture/drop counters.
 SniffStats sniffStats();
+
+// One-line human-readable rendering of a SniffStats snapshot, shared by the
+// SNIFF_SMOKE_TEST bring-up path (src/main.cpp) and the serial menu's
+// "Wi-Fi passive sniff" screen (lib/ui/serial_menu.cpp). No trailing
+// newline; caller decides how to emit it.
+inline std::string formatSniffStats(const SniffStats& s) {
+    char buf[128];
+    std::snprintf(buf, sizeof(buf),
+                  "[sniff] captured=%u parsed=%u droppedRaw=%u droppedOut=%u",
+                  s.capturedRaw, s.parsed, s.droppedRaw, s.droppedOut);
+    return std::string(buf);
+}
 
 }  // namespace bt

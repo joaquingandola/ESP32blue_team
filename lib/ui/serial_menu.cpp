@@ -4,8 +4,10 @@
 #include <WiFi.h>
 #include <esp_sleep.h>
 
+#include "config.h"
 #include "records.h"
 #include "wifi_scan.h"
+#include "wifi_sniff.h"
 #include "ble_scan.h"
 
 namespace bt {
@@ -21,7 +23,7 @@ struct ScreenStrategy {
     PrintFn  onPrint;
 };
 
-enum Screen { SCREEN_MAIN, SCREEN_WIFI_SCAN, SCREEN_BLE_SCAN, SCREEN_SETTINGS, SCREEN_shutdownAndSleep };
+enum Screen { SCREEN_MAIN, SCREEN_WIFI_SCAN, SCREEN_WIFI_SNIFF, SCREEN_BLE_SCAN, SCREEN_SETTINGS, SCREEN_shutdownAndSleep };
 
 constexpr uint32_t kBleScanSeconds = 5;
 
@@ -31,9 +33,10 @@ void printMainMenu() {
     Serial.println();
     Serial.println("=== ESP32blue_team ===");
     Serial.println("1) Wi-Fi active scan");
-    Serial.println("2) BLE passive scan");
-    Serial.println("3) Settings / info");
-    Serial.println("4) Shutdown and Sleep");
+    Serial.println("2) Wi-Fi passive sniff");
+    Serial.println("3) BLE passive scan");
+    Serial.println("4) Settings / info");
+    Serial.println("5) Shutdown and Sleep");
     Serial.println("Select an option:");
 }
 
@@ -59,6 +62,10 @@ void printBleTable(const std::vector<BleRecord>& results) {
     }
 }
 
+void printSniffRecord(const SniffRecord& r) {
+    Serial.println(formatSniffLine(r).c_str());
+}
+
 void printSettings() {
     Serial.println();
     Serial.println("=== Settings / info ===");
@@ -77,6 +84,40 @@ void runWifiScan() {
     } else {
         printApTable(results);
     }
+    printRunAgainMenu();
+}
+
+void runWifiSniff() {
+    Serial.println("--- Wi-Fi passive sniff ---");
+    Serial.println("[b] Stop");
+
+    if (!sniffStart()) {
+        Serial.println("Failed to start sniff (driver error or poisoned by a previous stop timeout)");
+        printRunAgainMenu();
+        return;
+    }
+
+    bool stop = false;
+    while (!stop) {
+        // Bounded per-pass drain: Serial.printf blocks once the TX buffer
+        // fills, so with several active APs the out queue can fill faster
+        // than we print. Draining it unconditionally would starve this
+        // Serial.available() check below and hang the menu -- see
+        // kSniffMaxDrainPerPass in config.h.
+        SniffRecord r;
+        for (uint32_t n = 0; n < kSniffMaxDrainPerPass && !stop && sniffPoll(r); ++n) {
+            printSniffRecord(r);
+            while (Serial.available()) {
+                const char c = static_cast<char>(Serial.read());
+                if (c == 'b' || c == 'B') stop = true;
+            }
+        }
+        if (!stop) delay(kSniffMenuPollMs);
+    }
+
+    sniffStop();
+    const SniffStats s = sniffStats();
+    Serial.println(formatSniffStats(s).c_str());
     printRunAgainMenu();
 }
 
@@ -109,14 +150,18 @@ void handleMainInput(char c) {
             runWifiScan();
             break;
         case '2':
+            screen = SCREEN_WIFI_SNIFF;
+            runWifiSniff();
+            break;
+        case '3':
             screen = SCREEN_BLE_SCAN;
             runBleScan();
             break;
-        case '3':
+        case '4':
             screen = SCREEN_SETTINGS;
             printSettings();
             break;
-        case '4':
+        case '5':
             screen = SCREEN_shutdownAndSleep;
             shutdownAndSleep();
             break;
@@ -148,11 +193,13 @@ void handleScreenInput(
         }
     }
 
-static const ScreenStrategy wifiScanStrategy = { runWifiScan, printRunAgainMenu };
-static const ScreenStrategy bleScanStrategy  = { runBleScan,  printRunAgainMenu };
-static const ScreenStrategy settingsStrategy = { nullptr,     printSettings };
+static const ScreenStrategy wifiScanStrategy  = { runWifiScan,  printRunAgainMenu };
+static const ScreenStrategy wifiSniffStrategy = { runWifiSniff, printRunAgainMenu };
+static const ScreenStrategy bleScanStrategy   = { runBleScan,   printRunAgainMenu };
+static const ScreenStrategy settingsStrategy  = { nullptr,      printSettings };
 
 void handleWifiScanInput(char c) { handleScreenInput(c, wifiScanStrategy); }
+void handleWifiSniffInput(char c) { handleScreenInput(c, wifiSniffStrategy); }
 void handleBleScanInput(char c) { handleScreenInput(c, bleScanStrategy); }
 void handleSettingsInput(char c) { handleScreenInput(c, settingsStrategy); }
 
@@ -172,6 +219,7 @@ void menuLoop() {
     switch (screen) {
         case SCREEN_MAIN:       handleMainInput(c); break;
         case SCREEN_WIFI_SCAN:  handleWifiScanInput(c); break;
+        case SCREEN_WIFI_SNIFF: handleWifiSniffInput(c); break;
         case SCREEN_BLE_SCAN:   handleBleScanInput(c); break;
         case SCREEN_SETTINGS:   handleSettingsInput(c); break;
     }

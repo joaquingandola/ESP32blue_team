@@ -29,17 +29,13 @@ void loop() {
 #ifdef SNIFF_SMOKE_TEST
     bt::SniffRecord r;
     while (bt::sniffPoll(r)) {
-        Serial.printf("%-9s src=%s bssid=%s ch=%2u rssi=%4d ssid=%s\n",
-                      r.type.c_str(), r.src.c_str(), r.bssid.c_str(),
-                      r.channel, r.rssi,
-                      r.ssid.empty() ? "<broadcast>" : r.ssid.c_str());
+        Serial.println(bt::formatSniffLine(r).c_str());
     }
     static uint32_t lastStats = 0;
     if (millis() - lastStats > 5000) {
         lastStats = millis();
         const bt::SniffStats s = bt::sniffStats();
-        Serial.printf("[sniff] captured=%u parsed=%u droppedRaw=%u droppedOut=%u\n",
-                      s.capturedRaw, s.parsed, s.droppedRaw, s.droppedOut);
+        Serial.println(bt::formatSniffStats(s).c_str());
     }
     delay(10);
 #else

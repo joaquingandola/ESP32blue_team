@@ -28,6 +28,13 @@ esp_timer_handle_t hopTimer      = nullptr;
 bool               running       = false;
 uint8_t            currentChannel = kSniffChannelMin;
 
+// Set once by sniffStop() if it ever times out waiting for the consumer to
+// confirm a clean exit (see sniffStop). At that point the consumer task and
+// both queues are deliberately leaked rather than torn down unsafely, so the
+// module is no longer reusable -- sniffStart() refuses to run again until
+// the next reboot.
+bool poisoned = false;
+
 // Cooperative stop signal for the consumer task. sniffStop() sets it and
 // waits (bounded) on consumerExited instead of killing the task, so any
 // in-flight new/std::string in consumerTaskFn always runs to completion.
@@ -63,14 +70,15 @@ void rxCb(void* buf, wifi_promiscuous_pkt_type_t type) {
 }
 
 // ---- Consumer: our own task, our own context -------------------------------
-// Normally never killed from outside: sniffStop() signals a cooperative stop
-// and waits for consumerExited (see below). This task polls the raw queue
-// with a bounded timeout so it notices `stopping` promptly, always finishes
-// any new/xQueueSend it started before checking the flag again, and
-// self-deletes once it has signaled consumerExited -- so on the happy path
-// there is never a window where the task is torn down mid-allocation.
-// (sniffStop() does keep a forced vTaskDelete() fallback for the rare case
-// where this task doesn't respond in time -- see sniffStop() for why.)
+// Never killed from outside while it's running: sniffStop() signals a
+// cooperative stop and waits for consumerExited (see below). This task polls
+// the raw queue with a bounded timeout so it notices `stopping` promptly,
+// always finishes any new/xQueueSend it started before checking the flag
+// again, then signals consumerExited and suspends itself (vTaskSuspend) --
+// so on the happy path there is never a window where the task is torn down
+// mid-allocation. sniffStop() confirms the task has actually reached
+// eSuspended before deleting it. If it never responds in time, sniffStop()
+// leaks the task on purpose instead of forcing a delete -- see sniffStop().
 void consumerTaskFn(void*) {
     SniffFrame f;
     for (;;) {
@@ -93,7 +101,7 @@ void consumerTaskFn(void*) {
     }
 
     if (consumerExited) xSemaphoreGive(consumerExited);
-    vTaskDelete(nullptr);
+    vTaskSuspend(nullptr);
 }
 
 // ---- Channel hopping -----------------------------------------------
@@ -106,6 +114,7 @@ void hopTimerCb(void*) {
 }  // namespace
 
 bool sniffStart() {
+    if (poisoned) return false;  // sniffStop() timed out previously; unsafe to reuse until reboot
     if (running) return true;
 
     stopping.store(false, std::memory_order_release);
@@ -154,6 +163,9 @@ bool sniffStart() {
 }
 
 void sniffStop() {
+    if (poisoned) return;  // already leaked/unusable; a second call must not
+                            // resurrect a stale consumerExited signal and
+                            // undo the deliberate leak (see below)
     running = false;
 
     // Stop producing first: kill the hop timer and the RX callback.
@@ -165,26 +177,56 @@ void sniffStop() {
     esp_wifi_set_promiscuous(false);
     esp_wifi_set_promiscuous_rx_cb(nullptr);
 
-    // Then stop consuming: signal the cooperative stop flag and wait
-    // (bounded) for the consumer to confirm it exited on its own. This is
-    // the normal path and never kills the task mid `new`/std::string.
+    // Signal the cooperative stop flag and wait (bounded) for the consumer
+    // to confirm it exited on its own. This is the normal path and never
+    // kills the task mid `new`/std::string.
     //
-    // If that wait times out, the consumer is still potentially alive and
-    // touching rawQueue/outQueue -- deleting the queues out from under it
-    // would be a use-after-free. As a last-resort fallback we forcibly
-    // vTaskDelete() it here (same risk the original synchronous-delete
-    // design always carried) so the queues below are provably safe to free.
-    // This should be rare; sStopTimeouts tracks how often it happens.
+    // If that wait times out, the consumer may still be alive and touching
+    // rawQueue/outQueue -- it could be blocked in xQueueReceive(rawQueue,..),
+    // or mid `new`/xQueueSend(outQueue,..). There is no point we can prove
+    // it has reached quiescence, so forcing a vTaskDelete() here and then
+    // freeing the queues below would be a real use-after-free / kernel-heap
+    // corruption risk, not something "safe to free". Instead we deliberately
+    // leak the consumer task and both queues and mark the module `poisoned`:
+    // a bounded, intentional leak is strictly safer than corrupting the heap
+    // or FreeRTOS's internal task lists. sniffStart() refuses to run again
+    // once poisoned -- a firmware reboot is required to recover.
+    // sStopTimeouts tracks how often this happens (should be rare).
     if (consumerTask) {
         stopping.store(true, std::memory_order_release);
         if (consumerExited == nullptr ||
             xSemaphoreTake(consumerExited, pdMS_TO_TICKS(kSniffConsumerStopTimeoutMs)) != pdTRUE) {
             sStopTimeouts++;
-            vTaskDelete(consumerTask);  // fallback: force it dead before freeing queues
+            poisoned = true;
+            return;  // leak consumerTask/rawQueue/outQueue on purpose: no safe teardown here
         }
+
+        // Happy path: the consumer calls xSemaphoreGive(consumerExited)
+        // right before vTaskSuspend(nullptr), so there's a short window
+        // after we wake up here where it hasn't actually suspended yet
+        // (this task and the consumer can be running on different cores).
+        // Wait for it to actually reach eSuspended before deleting it --
+        // deleting a task that hasn't finished suspending itself yet
+        // corrupts FreeRTOS's internal task lists.
+        // TODO(review): taskYIELD() only yields to equal/higher-priority
+        // tasks on this core -- if sniffStop() is ever called from a
+        // higher-priority task pinned to the consumer's core, this spins
+        // forever (Task WDT reset). Replace with a bounded vTaskDelay(1)
+        // loop that falls back to the `poisoned` path if it never reaches
+        // eSuspended, instead of taskYIELD() with no bound.
+        while (eTaskGetState(consumerTask) != eSuspended) taskYIELD();
+        vTaskDelete(consumerTask);
         consumerTask = nullptr;
         stopping.store(false, std::memory_order_release);
     }
+    // TODO(review): rxCb (Wi-Fi driver task, other core) checks
+    // `rawQueue == nullptr` before xQueueSend, but esp_wifi_set_promiscuous
+    // (false) above doesn't guarantee an in-flight callback has returned --
+    // there's a cross-core TOCTOU window where rxCb can still see a valid
+    // rawQueue right as it's deleted here. Null the pointer first, add a
+    // short grace delay before vQueueDelete, and make rawQueue
+    // std::atomic<QueueHandle_t> (it's read/written across cores with no
+    // protection today).
     if (rawQueue) {
         vQueueDelete(rawQueue);
         rawQueue = nullptr;
@@ -213,6 +255,7 @@ SniffStats sniffStats() {
     s.parsed      = sParsed;
     s.droppedOut  = sDroppedOut;
     s.stopTimeouts = sStopTimeouts;
+    s.poisoned    = poisoned;
     return s;
 }
 

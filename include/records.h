@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <cstdio>
 #include <string>
 
 namespace bt {
@@ -130,6 +131,19 @@ inline std::string toJson(const SniffRecord& r) {
            "\",\"ssid\":\"" + detail::jsonEscape(r.ssid) +
            "\",\"channel\":" + std::to_string(r.channel) +
            ",\"rssi\":" + std::to_string(r.rssi) + "}";
+}
+
+// One-line human-readable rendering of a SniffRecord, shared by the
+// SNIFF_SMOKE_TEST bring-up path (src/main.cpp) and the serial menu's
+// "Wi-Fi passive sniff" screen (lib/ui/serial_menu.cpp) so the two don't
+// drift out of sync. No trailing newline; caller decides how to emit it.
+inline std::string formatSniffLine(const SniffRecord& r) {
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "%-9s src=%s bssid=%s ch=%2u rssi=%4d ssid=%s",
+                  r.type.c_str(), r.src.c_str(), r.bssid.c_str(),
+                  r.channel, r.rssi,
+                  r.ssid.empty() ? "<broadcast>" : r.ssid.c_str());
+    return std::string(buf);
 }
 
 }  // namespace bt

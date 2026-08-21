@@ -36,4 +36,16 @@ constexpr uint32_t kSniffOutQueueDepth = 64;
 constexpr uint32_t kSniffConsumerPollMs        = 50;
 constexpr uint32_t kSniffConsumerStopTimeoutMs = 500;
 
+// ---- Serial menu (lib/ui/serial_menu) ----
+// How long the "Wi-Fi passive sniff" screen sleeps between sniffPoll() drain
+// passes while waiting for new records / a stop keypress.
+constexpr uint32_t kSniffMenuPollMs = 10;
+// Upper bound on records drained (and printed) per outer-loop pass in
+// runWifiSniff(). Serial.printf at kSerialBaud blocks once the TX buffer
+// fills (~150 records/s ceiling); with several active APs the out queue can
+// produce at or above that rate, so draining it unconditionally would starve
+// the Serial.available() stop-key check and hang the menu. Bounding the
+// drain per pass guarantees we check for 'b'/'B' at least this often.
+constexpr uint32_t kSniffMaxDrainPerPass = 12;
+
 }  // namespace bt
