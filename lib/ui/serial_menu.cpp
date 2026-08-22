@@ -99,20 +99,25 @@ void runWifiSniff() {
 
     bool stop = false;
     while (!stop) {
-        // Bounded per-pass drain: Serial.printf blocks once the TX buffer
-        // fills, so with several active APs the out queue can fill faster
-        // than we print. Draining it unconditionally would starve this
-        // Serial.available() check below and hang the menu -- see
-        // kSniffMaxDrainPerPass in config.h.
+        // Bounded per-pass drain
         SniffRecord r;
-        for (uint32_t n = 0; n < kSniffMaxDrainPerPass && !stop && sniffPoll(r); ++n) {
+        uint32_t drained = 0;
+        for (; drained < kSniffMaxDrainPerPass && sniffPoll(r); ++drained) {
             printSniffRecord(r);
-            while (Serial.available()) {
-                const char c = static_cast<char>(Serial.read());
-                if (c == 'b' || c == 'B') stop = true;
-            }
         }
-        if (!stop) delay(kSniffMenuPollMs);
+
+        // Checked every pass -- including empty ones -- so the menu can
+        // never get stuck ignoring 'b' when there's no traffic to drain.
+        while (Serial.available()) {
+            const char c = static_cast<char>(Serial.read());
+            if (c == 'b' || c == 'B') stop = true;
+        }
+
+        // Only sleep if this pass found nothing to print; a full drain means
+        // there's backlog and we should keep draining instead of throttling.
+        if (!stop && drained == 0) {
+            delay(kSniffMenuPollMs);
+        }
     }
 
     sniffStop();

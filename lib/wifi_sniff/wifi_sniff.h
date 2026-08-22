@@ -59,15 +59,16 @@ bool sniffPoll(SniffRecord& out);
 // Snapshot of the capture/drop counters.
 SniffStats sniffStats();
 
-// One-line human-readable rendering of a SniffStats snapshot, shared by the
-// SNIFF_SMOKE_TEST bring-up path (src/main.cpp) and the serial menu's
-// "Wi-Fi passive sniff" screen (lib/ui/serial_menu.cpp). No trailing
-// newline; caller decides how to emit it.
+// One-line human-readable rendering of a SniffStats snapshot, used by the
+// serial menu's "Wi-Fi passive sniff" screen (lib/ui/serial_menu.cpp). No
+// trailing newline; caller decides how to emit it.
 inline std::string formatSniffStats(const SniffStats& s) {
-    char buf[128];
+    char buf[160];
     std::snprintf(buf, sizeof(buf),
-                  "[sniff] captured=%u parsed=%u droppedRaw=%u droppedOut=%u",
-                  s.capturedRaw, s.parsed, s.droppedRaw, s.droppedOut);
+                  "[sniff] captured=%u parsed=%u droppedRaw=%u droppedOut=%u "
+                  "stopTimeouts=%u%s",
+                  s.capturedRaw, s.parsed, s.droppedRaw, s.droppedOut,
+                  s.stopTimeouts, s.poisoned ? " POISONED" : "");
     return std::string(buf);
 }
 
