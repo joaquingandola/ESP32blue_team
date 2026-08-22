@@ -1,105 +1,103 @@
 # ESP32blue_team
 
-A **defensive and forensic security firmware** for the ESP32 — monitoring and recon tooling rather than offensive capabilities. Designed to spot unexpected network activity and devices from a single ESP32 board.
+Un **firmware de seguridad defensiva y forense** para el ESP32 — herramientas de monitoreo y reconocimiento en lugar de capacidades ofensivas. Diseñado para detectar actividad de red inesperada y dispositivos desde una única placa ESP32.
 
-## Overview
+## Descripción General
 
-ESP32blue_team provides passive recon capabilities: passive Wi-Fi sniffing (capture and parse 802.11 management frames without transmitting), BLE device scanning, and active Wi-Fi scanning. All results can be logged to Serial or SD card in CSV/JSON format, with a simple menu UI for navigation.
+ESP32blue_team proporciona capacidades de reconocimiento pasivo: sniffing pasivo de Wi-Fi (captura y análisis de tramas de gestión 802.11 sin transmitir), escaneo de dispositivos BLE y escaneo activo de Wi-Fi. Todos los resultados se pueden registrar en serie o tarjeta SD en formato CSV/JSON, con una interfaz de menú simple para la navegación.
 
-**Core design principles:**
-- **No offensive actions** — no deauth, packet injection, or disruptive probing beyond standard 802.11 active scan.
-- **Passive first** — listen-only, never initiate transmissions (except during active scan).
-- **Portable parsing** — frame parsing logic (`include/frame_parse.h`) is Arduino-free (std C++ only) so it unit-tests on the host (`native` env).
-- **Clear boundaries** — scan modules return records; the logger writes to sinks; the menu handles UI. Modules don't cross these boundaries.
+**Principios de diseño fundamental:**
+- **Sin acciones ofensivas** — sin deauth, inyección de paquetes o sondeo disruptivo más allá del escaneo activo 802.11 estándar.
+- **Pasivo primero** — solo escucha, nunca inicia transmisiones (excepto durante el escaneo activo).
+- **Análisis portátil** — la lógica de análisis de tramas (`include/frame_parse.h`) está libre de Arduino (solo C++ estándar) para que se pueda probar en la computadora host (`native` env).
+- **Límites claros** — los módulos de escaneo devuelven registros; el logger escribe en sumideros; el menú maneja la interfaz. Los módulos no cruzan estos límites.
 
-## Status
+## Estado
 
-**Active development:**
-- ✅ WiFi active scan (802.11 active probing)
-- ✅ WiFi passive sniff (promiscuous RX, producer-consumer-parser architecture)
-- ✅ BLE device scanning (NimBLE-based)
-- ✅ Record types & formatting (ApRecord, BleRecord, SniffRecord; CSV/JSON helpers)
-- ✅ Serial menu UI (3-4 screen state machine)
-- ⚠️ Parsing & output wiring to menu — in progress
-- 🔧 SD card logging — planned
+**Desarrollo activo:**
+- ✅ Escaneo activo de WiFi (sondeo activo 802.11)
+- ✅ Sniffing pasivo de WiFi (RX promiscuo, arquitectura productor-consumidor-analizador)
+- ✅ Escaneo de dispositivos BLE (basado en NimBLE)
+- ✅ Tipos de registros y formato (ApRecord, BleRecord, SniffRecord; ayudantes CSV/JSON)
+- ✅ Interfaz de menú serie (máquina de estados 3-4 pantallas)
+- 🔧 Registro en tarjeta SD — planificado
 
-## Architecture
-
-```
-include/config.h        Board pins, baud, log defaults, feature flags, sniff tunables
-include/records.h       ApRecord / BleRecord / SniffRecord + CSV/JSON formatters
-include/frame_parse.h   SniffFrame POD + parseFrame(): raw 802.11 bytes → SniffRecord
-include/wifi_auth.h     WiFi auth/encryption type parsing
-
-lib/wifi_scan/          Active 802.11 scan (blocking call → vector<ApRecord>)
-lib/wifi_sniff/         Passive promiscuous RX capture + channel hopping
-                        Producer (WiFi RX callback) → rawQueue → Consumer task → outQueue → sniffPoll()
-lib/ble_scan/           NimBLE passive scan → vector<BleRecord>
-lib/logger/             Route records to sinks (Serial/SD), format via records.h
-lib/ui/serial_menu/     3-4 screen menu state machine; only place doing Serial I/O
-
-src/main.cpp            setup()/loop(): init logger + menu, run the menu
-```
-
-### WiFi Sniffing (Passive)
-
-The sniffer puts the ESP32 in **promiscuous RX mode** and listens to 802.11 management frames (beacons, probe requests) without transmitting. Since the workload runs in the Wi-Fi driver's callback context, it splits into a **producer-consumer** pattern over FreeRTOS queues:
+## Arquitectura
 
 ```
-WiFi driver task              App core (core 1)           Caller loop
+include/config.h        Pines de placa, baud, valores por defecto de log, flags de características, ajustables de sniff
+include/records.h       ApRecord / BleRecord / SniffRecord + formateadores CSV/JSON
+include/frame_parse.h   SniffFrame POD + parseFrame(): bytes 802.11 sin procesar → SniffRecord
+include/wifi_auth.h     Análisis de tipo de autenticación/encriptación WiFi
+
+lib/wifi_scan/          Escaneo activo 802.11 (llamada bloqueante → vector<ApRecord>)
+lib/wifi_sniff/         Captura de RX promiscua pasiva + salto de canal
+                        Productor (callback WiFi RX) → rawQueue → Tarea consumidora → outQueue → sniffPoll()
+lib/ble_scan/           Escaneo pasivo NimBLE → vector<BleRecord>
+lib/logger/             Enrutar registros a sumideros (Serial/SD), formato mediante records.h
+lib/ui/serial_menu/     Máquina de estados de menú 3-4 pantallas; único lugar haciendo E/S Serial
+
+src/main.cpp            setup()/loop(): inicializar logger + menú, ejecutar el menú
+```
+
+### Sniffing de WiFi (Pasivo)
+
+El sniffer coloca el ESP32 en **modo RX promiscuo** y escucha tramas de gestión 802.11 (beacons, solicitudes de sonda) sin transmitir. Como la carga de trabajo se ejecuta en el contexto de callback del controlador Wi-Fi, se divide en un patrón **productor-consumidor** sobre colas FreeRTOS:
+
+```
+Tarea del controlador WiFi        Núcleo de aplicación (núcleo 1)    Bucle de llamador
 ┌──────────────────┐  rawQueue  ┌────────────────────┐  outQueue  ┌──────────┐
-│ promiscuous RX   │ ─ SniffFrame → consumer task   │ SniffRec*  → sniffPoll
-│ callback         │  (POD)      │ parse → SniffRecord │ (heap ptr) │ (drain)
+│ RX promiscua     │ ─ SniffFrame → tarea consumidora│ SniffRec*  → sniffPoll
+│ callback         │  (POD)      │ analizar → SniffRecord │ (ptr heap) │ (drenar)
 └──────────────────┘            └────────────────────┘            └──────────┘
-     ▲ esp_timer: kSniffDwellMs (~250ms) → esp_wifi_set_channel(next)
-     └───────────────── channel hopping 1..13 ──────────────────────
+     ▲ esp_timer: kSniffDwellMs (~250ms) → esp_wifi_set_channel(siguiente)
+     └───────────────── salto de canal 1..13 ──────────────────────
 ```
 
-- **Producer (RX callback):** Filters to management frames only, reads RSSI/channel metadata, memcpy's bounded raw frame into POD `SniffFrame`, pushes to `rawQueue` with zero timeout. No malloc, no parsing — drops frames if queue is full (bumps counter).
-- **Consumer (FreeRTOS task):** Pinned to app core (core 1, separate from Wi-Fi core 0). Polls `rawQueue`, parses each `SniffFrame` into a full `SniffRecord` (SSID extraction, MAC parsing, etc.), hands to caller via `outQueue`.
-- **Drain (`sniffPoll()`):** Caller polls `outQueue` and decides what to do (log, display, etc.). No Serial I/O in the sniffer itself — that's the logger's job.
-- **Channel hopping:** A periodic timer advances the sniffer across channels (configurable range), so we don't get stuck on channel 1.
+- **Productor (callback RX):** Filtra solo tramas de gestión, lee metadatos RSSI/canal, memcpy del marco sin procesar limitado en POD `SniffFrame`, empuja a `rawQueue` con tiempo de espera cero. Sin malloc, sin análisis — descarta tramas si la cola está llena (incrementa contador).
+- **Consumidor (tarea FreeRTOS):** Fijado al núcleo de aplicación (núcleo 1, separado del núcleo Wi-Fi 0). Sondea `rawQueue`, analiza cada `SniffFrame` en un `SniffRecord` completo (extracción SSID, análisis MAC, etc.), entrega al llamador mediante `outQueue`.
+- **Drenar (`sniffPoll()`):** El llamador sondea `outQueue` y decide qué hacer (registrar, mostrar, etc.). Sin E/S Serial en el sniffer mismo — ese es trabajo del logger.
+- **Salto de canal:** Un temporizador periódico avanza el sniffer entre canales (rango configurable), para no quedarse atascado en el canal 1.
 
-## Libraries & Dependencies
+## Librerías y Dependencias
 
-- **PlatformIO** — build system and package manager.
-- **Arduino framework** — ESP32 core, Serial, GPIO abstractions.
-- **ESP-IDF** — low-level ESP32 APIs (Wi-Fi, BLE, timers, FreeRTOS).
-- **NimBLE** — BLE scanning (lighter than the full Bluetooth stack).
-- **FreeRTOS** — task scheduler, queues, semaphores, mutexes (already part of ESP-IDF).
-- **std::string, std::vector, std::atomic** — C++ standard library (available on ESP32, used for portability).
+- **PlatformIO** — sistema de compilación y gestor de paquetes.
+- **Framework Arduino** — núcleo ESP32, abstracciones Serial, GPIO.
+- **ESP-IDF** — APIs ESP32 de bajo nivel (Wi-Fi, BLE, temporizadores, FreeRTOS).
+- **NimBLE** — escaneo BLE (más ligero que la pila Bluetooth completa).
+- **FreeRTOS** — planificador de tareas, colas, semáforos, mutexes (ya parte de ESP-IDF).
+  - **Colas (`xQueueCreate`):** En el sniffer pasivo se utilizan dos colas principales:
+    - `rawQueue`: transporta `SniffFrame` POD (estructura de datos sin asignación dinámica) desde el callback RX (contexto de interrupción del driver Wi-Fi) hacia la tarea consumidora en el núcleo de aplicación. Tamaño configurado en `config.h`.
+    - `outQueue`: transporta punteros a `SniffRecord` (asignados en heap) desde la tarea consumidora hacia el llamador (`sniffPoll()`). Permite drenaje de resultados sin bloqueo en el loop principal.
+  - **Sincronización:** Las colas emplean timeouts configurables (`pdMS_TO_TICKS()`); `rawQueue` usa timeout cero (descarta si está llena), `outQueue` permite espera para drenaje ordenado.
+  - **Afinidad de núcleos:** Productor (callback) en Wi-Fi core 0, consumidor pinned a app core 1 — evita contención entre el driver Wi-Fi y la aplicación.
+- **std::string, std::vector, std::atomic** — librería estándar C++ (disponible en ESP32, usada para portabilidad).
 
-## Build & Test
+## Compilar y Probar
 
-**Build:**
+**Compilar:**
 ```bash
-pio run                              # Build (default env: esp32dev)
-pio run -t upload                    # Build + flash over USB
-pio device monitor                   # Open serial console (115200 baud)
+pio run                              # Compilar (env por defecto: esp32dev)
+pio run -t upload                    # Compilar + flashear por USB
+pio device monitor                   # Abrir consola serie (115200 baud)
 ```
 
-**Host tests (portable code only):**
+**Pruebas en la computadora host (solo código portátil):**
 ```bash
-pio test -e native                   # Run unit tests for include/ code (requires g++)
+pio test -e native                   # Ejecutar pruebas unitarias para código include/ (requiere g++)
 ```
 
-**Test the sniffer in isolation:**
-```bash
-PLATFORMIO_BUILD_FLAGS=-DSNIFF_SMOKE_TEST pio run
-# Runs passive sniffer bring-up (streams parsed beacons to Serial) instead of menu
-```
+## Alcance v1.0
 
-## v1.0 Scope
+Reconocimiento de la propia red del ESP32 para visibilidad defensiva (ej., detectar dispositivos/tráfico inesperado):
+- **Escaneo activo de Wi-Fi** — escaneo 802.11 estándar, reporta SSID/BSSID/canal/RSSI/encriptación.
+- **Sniffing pasivo de Wi-Fi** — captura y análisis continuo de tramas 802.11, salto de canal.
+- **Escaneo BLE** — descubrir dispositivos BLE cercanos y anuncios.
+- **Registro** — escribir registros en Serie y/o tarjeta SD, formato CSV o JSON.
+- **Interfaz de menú** — navegación simple de 3-4 pantallas (menú principal, escaneo Wi-Fi, escaneo BLE, log/configuración).
 
-Recon of the ESP32's own network for defensive visibility (e.g., spot unexpected devices/traffic):
-- **Active Wi-Fi scan** — standard 802.11 scan, reports SSID/BSSID/channel/RSSI/encryption.
-- **Passive Wi-Fi sniff** — continuous 802.11 frame capture and parsing, channel hopping.
-- **BLE scan** — discover nearby BLE devices and advertisements.
-- **Logging** — write records to Serial and/or SD card, CSV or JSON format.
-- **Menu UI** — simple 3-4 screen navigation (main menu, Wi-Fi scan, BLE scan, log/settings).
+**No incluido:** deauth, inyección de paquetes, sondeo activo más allá del escaneo 802.11 estándar, capacidades ofensivas.
 
-**Not included:** deauth, packet injection, active probing beyond standard 802.11 scan, offensive capabilities.
+## Futuro
 
-## Future
-
-This v1.0 focuses on network recon and monitoring. Future versions may expand with additional defensive/forensic tooling profiles, depending on project direction.
+Esta v1.0 se enfoca en reconocimiento y monitoreo de red. Las versiones futuras pueden expandirse con perfiles adicionales de herramientas defensivas/forenses, dependiendo de la dirección del proyecto.

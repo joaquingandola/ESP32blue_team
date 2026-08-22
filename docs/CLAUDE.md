@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ESP32blue_team is an ESP32 firmware project building a **defensive/forensic security tooling profile** for the ESP32 — i.e., tools aimed at monitoring and protecting a network, not offensive/attack tooling.
 
-`lib/wifi_scan` (active Wi-Fi scan), `lib/ble_scan` (passive BLE scan), and `lib/ui` (serial menu) are implemented and wired into `src/main.cpp`. `lib/wifi_sniff` (passive promiscuous sniffer, producer/consumer over a FreeRTOS queue + channel hopping) is implemented but **not** wired into the menu yet — it's reachable standalone via the `SNIFF_SMOKE_TEST` build flag (see below). `lib/logger` is still an empty skeleton.
+`lib/wifi_scan` (active Wi-Fi scan), `lib/ble_scan` (passive BLE scan), `lib/wifi_sniff` (passive promiscuous sniffer, producer/consumer over a FreeRTOS queue + channel hopping), and `lib/ui` (serial menu) are implemented and wired into `src/main.cpp` via the menu's 4 screens. `lib/logger` is still an empty skeleton.
 
 ## v1.0 Prototype Scope
 
@@ -28,7 +28,6 @@ Hard constraint: no deauthing, packet injection, or other offensive/disruptive a
 - `pio run -t upload` — build + flash over USB.
 - `pio device monitor` — open serial console (115200 baud).
 - `pio test -e native` — run host-side unit tests (no hardware) for the portable code in `include/` (`test_records`, `test_wifi_auth`, `test_frame_parse`). **Requires a host C++ compiler**: this machine has `gcc` but not `g++`/`cc1plus`, so the native env currently errors out with `g++: command not found`. Install it with `sudo dnf install gcc-c++` (Fedora) to run them.
-- `PLATFORMIO_BUILD_FLAGS=-DSNIFF_SMOKE_TEST pio run` (or add `-DSNIFF_SMOKE_TEST` to `build_flags`) — builds the firmware with `src/main.cpp` running the passive Wi-Fi sniffer bring-up (streams parsed beacons/probe-requests to Serial) instead of the menu. Default builds run the menu.
 - Do not create tests for new functionalities when it is not explicitly demanded.
 
 ## Repository layout
